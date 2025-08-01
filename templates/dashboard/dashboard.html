@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Knowledge Engine - Datacenter Operations</title>
+    
+    <!-- Load Django's static file handling -->
+    {% load static %}
+    {% load dashboard_extras %}
+
+    <!-- External Libraries (from CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    
+    <!-- Link to your new local CSS file -->
+    <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+</head>
+<body>
+
+    <div class="container">
+        <header class="page-header">
+            <div class="logo">
+                <h1>Knowledge Engine</h1>
+                <p>Datacenter Facilities Management</p>
+            </div>
+            <div class="header-right">
+                <nav class="main-nav">
+                    <a class="view-tab active" data-target="dashboard-view">Asset Dashboard</a>
+                    <a class="view-tab" data-target="incidents-view">Incidents</a>
+                    <a class="view-tab" data-target="new-incident-view">New Incident</a>
+                    <a class="view-tab" data-target="escalation-view">Escalation Matrix</a>
+                    <a class="view-tab" data-target="plan-view">Development Plan</a>
+                </nav>
+                <div id="user-profile-button" class="user-profile">
+                    <div class="user-details">
+                        {% if on_duty_user %}
+                            <p class="user-name">On Duty: {{ on_duty_user.get_full_name|default:on_duty_user.username }}</p>
+                            {# You can enhance this by passing shift details from your model #}
+                            <p class="user-shift">Shift: {{ user_shift|default:"08:00 - 20:00" }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="user-avatar">{{ on_duty_user.username|first|upper }}</div>
+                </div>
+            </div>
+        </header>
+
+        <div class="app-grid">
+            <!-- Main Content Area -->
+            <div class="main-pane">
+                <!-- Incidents View -->
+                <div id="incidents-view" class="view-content hidden">
+                    <div class="view-header">
+                        <h2>Open Incidents</h2>
+                        <input type="text" id="search-input" placeholder="Search incidents..." class="search-input">
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>Number</th><th>Priority</th><th>State</th><th>Short description</th><th>Assignee</th></tr>
+                            </thead>
+                            <tbody id="ticket-list">
+                                {% for incident in incidents %}
+                                    {# Assuming your JS needs this data attribute to show details #}
+                                    <tr class="ticket-row" data-incident-id="{{ incident.pk }}">
+                                        <td>{{ incident.number }}</td>
+                                        <td><span class="status-badge priority-{{ incident.priority }}">{{ incident.get_priority_display }}</span></td>
+                                        <td><span class="status-badge state-{{ incident.state|slugify }}">{{ incident.get_state_display }}</span></td>
+                                        <td>{{ incident.short_description }}</td>
+                                        <td>{{ incident.assignee.get_full_name|default:incident.assignee.username|default:"Unassigned" }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr><td colspan="5">No open incidents found.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Asset Dashboard View -->
+                <div id="dashboard-view" class="view-content">
+                     <h2>Grey Space Asset Status</h2>
+                     <div class="asset-nav-container">
+                        <nav class="asset-nav">
+                            <a class="asset-tab active" data-asset="power">Power</a>
+                            <a class="asset-tab" data-asset="cooling">Cooling</a>
+                            <a class="asset-tab" data-asset="batteries">Batteries</a>
+                            <a class="asset-tab" data-asset="plumbing">Plumbing</a>
+                            <a class="asset-tab" data-asset="fire">Fire Systems</a>
+                            <a class="asset-tab" data-asset="generators">Generators</a>
+                            <a class="asset-tab" data-asset="cameras">Cameras</a>
+                        </nav>
+                     </div>
+                     <div class="asset-views-container">
+                        {% for category in asset_categories %}
+                            <div id="{{ category.name }}-asset" class="asset-view {{ category.grid_class }} {% if not category.is_active %}hidden{% endif %}">
+                                {% for asset in assets_by_category|get_item:category.name %}
+                                    <div class="asset-card {% if asset.status != 'Online' %}offline{% endif %}" data-asset-id="{{ asset.pk }}">
+                                        <h3>{{ asset.name }}</h3>
+                                        {# Assuming your Asset model has 'value' and 'unit' fields #}
+                                        <p>{{ asset.value }}<span> {{ asset.unit }}</span></p>
+                                        <p class="status-text status-{{ asset.status|lower }}">
+                                            {{ asset.status }}
+                                        </p>
+                                    </div>
+                                {% empty %}
+                                    <p>No {{ category.name|title }} assets found.</p>
+                                {% endfor %}
+                            </div>
+                        {% endfor %}
+                     </div>
+                </div>
+                
+                <!-- New Incident View -->
+                <div id="new-incident-view" class="view-content hidden">
+                    <h2>Log New Incident</h2>
+                    <div class="form-container">
+                        <div><label for="short-desc">Short Description</label><input type="text" id="short-desc"></div>
+                        <div><label for="long-desc">Detailed Description</label><textarea id="long-desc" rows="6"></textarea></div>
+                        <div class="form-grid-2">
+                             <div><label for="priority-select">Priority</label><select id="priority-select"><option>4 - Low</option><option selected>3 - Moderate</option><option>2 - High</option><option>1 - Critical</option></select></div>
+                             <div><label for="assignee-select">Assignee</label><select id="assignee-select"><option>Okello</option><option>Mugisha</option><option>Nantale</option><option>Facilities Team</option></select></div>
+                        </div>
+                        <div><button class="button-primary">Submit Incident</button></div>
+                    </div>
+                </div>
+
+                <!-- Escalation Matrix View -->
+                <div id="escalation-view" class="view-content hidden">
+                    <h2>Incident Escalation Matrix</h2>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>Level</th><th>Contact Person</th><th>Contact Details</th><th>Response Time</th><th>Trigger</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>L1 - On-Duty Engineer</td><td>Okello / Mugisha / Nantale</td><td>+256 77X XXX XXX</td><td>15 Minutes</td><td>Any P2, P3, P4 Incident</td></tr>
+                                <tr><td>L2 - Facilities Manager</td><td>Achen</td><td>+256 78X XXX XXX</td><td>30 Minutes</td><td>Any P1 Incident</td></tr>
+                                <tr><td>L3 - Head of Operations</td><td>Byaruhanga</td><td>+256 75X XXX XXX</td><td>60 Minutes</td><td>P1 not resolved in 2 hours</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Development Plan View -->
+                <div id="plan-view" class="view-content hidden plan-content">
+                    <h2>14-Day Development Plan: Datacenter Ticketing System</h2>
+                    <div id="plan-phase-1" class="plan-phase">
+                        <h3>Phase 1: Core Backend & Authentication (Days 1-4)</h3>
+                        <ul><li><strong>Day 1: Project Setup & Custom User Model</strong> - Initialize Django project, create `tickets` app, and define a custom User model with roles (`USER`, `ADMIN`, `SUPER_ADMIN`). Define `Ticket` and `Activity` models.</li><li><strong>Day 2: Office 365 Authentication</strong> - Use `django-allauth` to connect with Microsoft's Graph API for login.</li><li><strong>Day 3: Permissions & Admin Views</strong> - Implement role-based permissions. Set up the Django Admin for all models.</li><li><strong>Day 4: Shift & On-Duty Management</strong> - Create a `Shift` model to record on-duty engineers and their shift times.</li></ul>
+                        <div class="comment-box"><h4 class="comment-title">Management Comments</h4><div class="comment-area" data-comment-area="phase-1"></div><textarea data-comment-input="phase-1" rows="2" placeholder="Add a comment on Phase 1..."></textarea><button data-comment-submit="phase-1" class="button-comment">Submit Comment</button></div>
+                    </div>
+                    <div id="plan-phase-2" class="plan-phase">
+                        <h3>Phase 2: Core Functionality & Email (Days 5-8)</h3>
+                        <ul><li><strong>Day 5: Incident Logging & Attachments</strong> - Create the 'New Incident' form and add `FileField` to the `Activity` model for uploads.</li><li><strong>Day 6: Outbound Email Notifications</strong> - Use Django Signals to trigger formatted HTML emails on ticket updates.</li><li><strong>Day 7: Inbound Email Ticket Creation</strong> - Use a service like Postmark to parse inbound emails and create tickets via a dedicated API endpoint.</li><li><strong>Day 8: Knowledge Base</strong> - Create a `KnowledgeBaseArticle` model for storing user manuals and common fixes.</li></ul>
+                        <div class="comment-box"><h4 class="comment-title">Management Comments</h4><div class="comment-area" data-comment-area="phase-2"></div><textarea data-comment-input="phase-2" rows="2" placeholder="Add a comment on Phase 2..."></textarea><button data-comment-submit="phase-2" class="button-comment">Submit Comment</button></div>
+                    </div>
+                    <div id="plan-phase-3" class="plan-phase">
+                        <h3>Phase 3: Advanced Integrations & ITIL (Days 9-14)</h3>
+                        <ul><li><strong>Day 9: Asterisk IVR Integration</strong> - Use the Asterisk Gateway Interface (AGI) to make API calls to Django to log tickets from the phone system.</li><li><strong>Day 10-11: ITIL Models - The Foundation</strong> - Create Django models for `Problem` and `ChangeRequest` management.</li><li><strong>Day 12: ITIL Workflow Implementation</strong> - Connect models to allow creating Problems from Incidents, and Change Requests from Problems.</li><li><strong>Day 13-14: Frontend Integration & Final Polish</strong> - Replace all mock data with live API calls to the Django backend and conduct final testing.</li></ul>
+                         <div class="comment-box"><h4 class="comment-title">Management Comments</h4><div class="comment-area" data-comment-area="phase-3"></div><textarea data-comment-input="phase-3" rows="2" placeholder="Add a comment on Phase 3..."></textarea><button data-comment-submit="phase-3" class="button-comment">Submit Comment</button></div>
+                    </div>
+                </div>
+
+                <!-- Profile View -->
+                <div id="profile-view" class="view-content hidden"></div>
+            </div>
+
+            <!-- Right Details Panel -->
+            <aside id="details-panel" class="details-pane">
+                <!-- Details will be injected here by JavaScript -->
+            </aside>
+        </div>
+    </div>
+
+    <!-- Link to your local JavaScript file -->
+    <script src="{% static 'js/app.js' %}" defer></script>
+</body>
+</html>
